@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      min-height: 100vh;
+    }
+    .card {
+      border-radius: 15px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    }
+    .user-info {
+      background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+      color: white;
+      border-radius: 10px;
+      padding: 20px;
+    }
+    .role-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 5px 15px;
+      border-radius: 20px;
+      margin: 2px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark" style="background: rgba(0,0,0,0.2);">
+    <div class="container">
+      <a class="navbar-brand" href="#">🎧 <%= portal %></a>
+      <div class="navbar-nav ms-auto">
+        <span class="nav-item nav-link text-light">Welcome, <%= user.name %></span>
+        <a class="nav-item nav-link" href="/logout">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-5">
+    <div class="row justify-content-center">
+      <div class="col-md-8">
+        <div class="card p-4">
+          <h2 class="mb-4">👋 Welcome to <%= portal %></h2>
+          
+          <div class="user-info mb-4">
+            <h5>User Information</h5>
+            <p class="mb-1"><strong>Username:</strong> <%= user.name %></p>
+            <p class="mb-1"><strong>Email:</strong> <%= user.email || 'N/A' %></p>
+            <p class="mb-2"><strong>Roles:</strong></p>
+            <div>
+              <% user.roles.forEach(role => { %>
+                <span class="role-badge"><%= role %></span>
+              <% }); %>
+            </div>
+          </div>
+
+          <div class="alert alert-success">
+            <h5>✅ SSO Authentication Successful!</h5>
+            <p class="mb-0">You have been authenticated via Keycloak Single Sign-On.</p>
+          </div>
+
+          <div class="mt-4">
+            <h5>Quick Links</h5>
+            <div class="d-flex gap-2 flex-wrap">
+              <a href="http://localhost:3001/dashboard" class="btn btn-outline-primary">Admin Portal</a>
+              <a href="http://localhost:3002/dashboard" class="btn btn-outline-success">CS Portal</a>
+            </div>
+            <small class="text-muted mt-2 d-block">
+              Note: Access depends on your assigned roles
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
