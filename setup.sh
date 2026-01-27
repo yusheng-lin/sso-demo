@@ -2,8 +2,8 @@
 
 echo "🚀 Starting SSO Demo Setup..."
 
-# Start Keycloak
-echo "📦 Starting Keycloak..."
+# Start Keycloak and Redis
+echo "📦 Starting Keycloak and Redis..."
 docker-compose up -d
 
 echo "⏳ Waiting for Keycloak to start (30 seconds)..."
@@ -31,7 +31,12 @@ echo "📍 URLs:"
 echo "  - Admin Portal: http://localhost:3001"
 echo "  - CS Portal:    http://localhost:3002"
 echo "  - Keycloak:     http://localhost:8080/admin (admin/admin)"
+echo "  - Redis:        localhost:6379"
 echo ""
 echo "👤 Test Users:"
 echo "  - admin / admin123 (can access both portals)"
 echo "  - csuser / cs123   (can only access CS Portal)"
+echo ""
+echo "🔧 Redis Commands:"
+echo "  - View sessions: docker exec -it redis redis-cli KEYS '*portal*'"
+echo "  - Redis CLI:     docker exec -it redis redis-cli"

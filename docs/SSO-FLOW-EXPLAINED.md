@@ -285,6 +285,140 @@ The same SSO magic works in reverse! Once an admin user is logged into Admin Por
 - **Instantly** redirected to CS Portal dashboard - no login required!
 - The entire auth flow happens in milliseconds with multiple redirects, invisible to the user
 
+## REST API with Bearer Token Authentication
+
+Each portal exposes protected REST APIs that require Bearer token authentication:
+
+| Portal | API Endpoint | Required Role |
+|--------|-------------|---------------|
+| Admin Portal | `GET /api/profits` | `admin` |
+| CS Portal | `GET /api/customers` | `cs` OR `admin` |
+
+### How Bearer Token Authentication Works
+
+```
+┌─────────┐                    ┌───────────┐                    ┌──────────┐
+│ Client  │                    │   API     │                    │ Keycloak │
+│ (curl)  │                    │  Server   │                    │          │
+└────┬────┘                    └─────┬─────┘                    └────┬─────┘
+     │                               │                               │
+     │  1. POST /token               │                               │
+     │     (username + password)     │                               │
+     │──────────────────────────────────────────────────────────────►│
+     │                               │                               │
+     │  2. Return access_token (JWT) │                               │
+     │◄──────────────────────────────────────────────────────────────│
+     │                               │                               │
+     │  3. GET /api/profits          │                               │
+     │     Authorization: Bearer <token>                             │
+     │──────────────────────────────►│                               │
+     │                               │                               │
+     │                               │  4. Verify JWT signature      │
+     │                               │     & check roles             │
+     │                               │                               │
+     │  5. 200 OK (JSON data)        │                               │
+     │◄──────────────────────────────│                               │
+```
+
+### Step 1: Get Access Token from Keycloak
+
+Use Keycloak's token endpoint with Resource Owner Password Credentials grant:
+
+```bash
+# Get token for admin user
+curl -X POST "http://localhost:8080/realms/demo/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=admin-portal" \
+  -d "username=admin" \
+  -d "password=admin" \
+  -d "grant_type=password"
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6Ikp...",
+  "expires_in": 300,
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI...",
+  "token_type": "Bearer"
+}
+```
+
+### Step 2: Call API with Bearer Token
+
+```bash
+# Store token in variable
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/demo/protocol/openid-connect/token" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=admin-portal" \
+  -d "username=admin" \
+  -d "password=admin" \
+  -d "grant_type=password" | jq -r '.access_token')
+
+# Call Admin Portal profits API
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3001/api/profits
+
+# Call CS Portal customers API (admin can access both!)
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3002/api/customers
+```
+
+### API Responses
+
+**Successful Response:**
+```json
+{
+  "success": true,
+  "requestedBy": "admin",
+  "data": [
+    { "id": 1, "month": "2026-01", "revenue": 150000, "expenses": 85000, "profit": 65000 },
+    { "id": 2, "month": "2026-02", "revenue": 175000, "expenses": 92000, "profit": 83000 }
+  ]
+}
+```
+
+**Access Denied (wrong role):**
+```bash
+# CS user trying to access profits API
+TOKEN=$(curl -s -X POST "http://localhost:8080/realms/demo/protocol/openid-connect/token" \
+  -d "client_id=cs-portal" -d "username=csuser" -d "password=csuser" \
+  -d "grant_type=password" -H "Content-Type: application/x-www-form-urlencoded" | jq -r '.access_token')
+
+curl -H "Authorization: Bearer $TOKEN" http://localhost:3001/api/profits
+# Returns: 403 Forbidden - Access denied
+```
+
+### How keycloak-connect Validates Bearer Tokens
+
+The `keycloak.protect()` middleware automatically handles both:
+1. **Session-based auth** (browser with cookies)
+2. **Bearer token auth** (API clients with Authorization header)
+
+When it receives a request with `Authorization: Bearer <token>`:
+
+1. **Extracts the JWT** from the header
+2. **Verifies the signature** using Keycloak's public key
+3. **Checks expiration** (`exp` claim)
+4. **Validates the issuer** matches Keycloak realm
+5. **Checks roles** based on your `protect()` configuration
+
+```javascript
+// This works for BOTH browser sessions AND Bearer tokens!
+app.get('/api/profits', keycloak.protect('realm:admin'), (req, res) => {
+  // Token is available in req.kauth.grant.access_token
+  const userInfo = req.kauth.grant.access_token.content;
+  // ...
+});
+```
+
+### Access Matrix
+
+| User | `/api/profits` (Admin Portal) | `/api/customers` (CS Portal) |
+|------|------------------------------|------------------------------|
+| admin | ✅ Has `admin` role | ✅ Has `admin` role |
+| csuser | ❌ No `admin` role | ✅ Has `cs` role |
+
 ## Security Notes
 
 ### Why Authorization Code Flow?
@@ -296,17 +430,96 @@ The same SSO magic works in reverse! Once an admin user is logged into Admin Por
 
 ### Session Storage
 
-In this demo, tokens are stored in server-side memory:
+In this demo, sessions (including tokens) are stored in **Redis** for production-ready session management:
 
 ```javascript
-const memoryStore = new session.MemoryStore();
+const { createClient } = require('redis');
+const RedisStore = require('connect-redis').default;
+
+// Initialize Redis client
+const redisClient = createClient({ url: 'redis://localhost:6379' });
+redisClient.connect().catch(console.error);
+
+// Create Redis store
+const redisStore = new RedisStore({
+  client: redisClient,
+  prefix: 'admin-portal:'  // Prefix for session keys
+});
+
+app.use(session({
+  store: redisStore,
+  secret: 'admin-portal-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: false,    // Set to true with HTTPS
+    httpOnly: true,   // Prevents XSS access to cookie
+    maxAge: 1000 * 60 * 60 * 24  // 24 hours
+  }
+}));
 ```
 
-**For production**, use a persistent store like Redis:
+**Why Redis for sessions?**
+
+| Feature | MemoryStore | Redis |
+|---------|-------------|-------|
+| Persistence | ❌ Lost on restart | ✅ Survives restarts |
+| Scalability | ❌ Single server only | ✅ Multiple servers can share |
+| Production-ready | ❌ No | ✅ Yes |
+| Session sharing | ❌ No | ✅ Across services |
+
+**View sessions in Redis:**
+
+```bash
+# Connect to Redis CLI
+docker exec -it redis redis-cli
+
+# List all session keys
+KEYS *portal*
+
+# View a specific session
+GET "admin-portal:sess:<sessionId>"
+```
+
+## Logout Flow
+
+Proper logout requires cleaning up both the application session and Keycloak session:
 
 ```javascript
-const RedisStore = require('connect-redis')(session);
-const memoryStore = new RedisStore({ client: redisClient });
+app.get('/logout', (req, res) => {
+  const logoutUrl = `http://localhost:8080/realms/demo/protocol/openid-connect/logout?redirect_uri=${encodeURIComponent('http://localhost:3001/')}`;
+  
+  // 1. Destroy session (removes from Redis)
+  req.session.destroy((err) => {
+    if (err) console.error('Session destruction error:', err);
+    
+    // 2. Clear session cookie from browser
+    res.clearCookie('connect.sid');
+    
+    // 3. Redirect to Keycloak logout (ends SSO session)
+    res.redirect(logoutUrl);
+  });
+});
+```
+
+### What Gets Cleaned Up
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | `req.session.destroy()` | Deletes session from Redis |
+| 2 | `res.clearCookie('connect.sid')` | Removes cookie from browser |
+| 3 | Keycloak logout redirect | Ends Keycloak SSO session |
+
+### Verify Session Deletion
+
+```bash
+# Before logout
+docker exec -it redis redis-cli KEYS '*portal*'
+# Shows: "admin-portal:sess:abc123..."
+
+# After logout
+docker exec -it redis redis-cli KEYS '*portal*'
+# Shows: (empty array)
 ```
 
 ## Debugging Tips

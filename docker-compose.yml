@@ -17,6 +17,24 @@ services:
     networks:
       - sso-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - sso-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   sso-network:
     driver: bridge
+
+volumes:
+  redis-data:
