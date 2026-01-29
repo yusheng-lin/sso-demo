@@ -6,8 +6,11 @@ const { createClient } = require('redis');
 const RedisStore = require('connect-redis').default;
 
 const app = express();
-const PORT = 3002;
+const PORT = process.env.PORT || 3002;
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const KEYCLOAK_URL = process.env.KEYCLOAK_URL || 'http://localhost:8080';
+const ADMIN_PORTAL_URL = process.env.ADMIN_PORTAL_URL || 'http://localhost:3001';
+const CS_PORTAL_URL = process.env.CS_PORTAL_URL || 'http://localhost:3002';
 
 // Initialize Redis client
 const redisClient = createClient({ url: REDIS_URL });
@@ -42,7 +45,7 @@ app.use(session({
 // Pass memoryStore for grant cache (keycloak-connect requires callback-based store)
 const keycloak = new Keycloak({ store: memoryStore }, {
   realm: 'demo',
-  'auth-server-url': 'http://localhost:8080/',
+  'auth-server-url': `${KEYCLOAK_URL}/`,
   'ssl-required': 'external',
   resource: 'cs-portal',
   'public-client': true,
@@ -116,7 +119,7 @@ app.get('/api/profits', keycloak.protect((token) => {
 }), async (req, res) => {
   try {
     const token = req.kauth.grant.access_token.token;
-    const response = await fetch('http://localhost:3001/api/profits', {
+    const response = await fetch(`${ADMIN_PORTAL_URL}/api/profits`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
@@ -138,7 +141,7 @@ app.get('/api/profits', keycloak.protect((token) => {
 // Using /auth/logout to avoid conflict with keycloak.middleware() which intercepts /logout
 app.get('/auth/logout', async (req, res) => {
   console.log('Initiating logout process for CS Portal');
-  const logoutUrl = `http://localhost:8080/realms/demo/protocol/openid-connect/logout?redirect_uri=${encodeURIComponent('http://localhost:3002/')}`;
+  const logoutUrl = `${KEYCLOAK_URL}/realms/demo/protocol/openid-connect/logout?redirect_uri=${encodeURIComponent(CS_PORTAL_URL + '/')}`;
   
   const sessionId = req.sessionID;
   

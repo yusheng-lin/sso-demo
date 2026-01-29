@@ -5,8 +5,8 @@ services:
     image: quay.io/keycloak/keycloak:latest
     container_name: keycloak
     environment:
-      - KEYCLOAK_ADMIN=admin
-      - KEYCLOAK_ADMIN_PASSWORD=admin
+      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD}
     ports:
       - "8080:8080"
     command:
@@ -16,6 +16,12 @@ services:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
     networks:
       - sso-network
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -31,6 +37,50 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  admin-portal:
+    build:
+      context: ./admin-portal
+      dockerfile: Dockerfile
+    container_name: admin-portal
+    ports:
+      - "3001:3001"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - KEYCLOAK_URL=${KEYCLOAK_URL}
+      - ADMIN_PORTAL_URL=${ADMIN_PORTAL_URL}
+      - CS_PORTAL_URL=${CS_PORTAL_INTERNAL_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - sso-network
+    extra_hosts:
+      - "localhost:host-gateway"
+
+  cs-portal:
+    build:
+      context: ./cs-portal
+      dockerfile: Dockerfile
+    container_name: cs-portal
+    ports:
+      - "3002:3002"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - KEYCLOAK_URL=${KEYCLOAK_URL}
+      - CS_PORTAL_URL=${CS_PORTAL_URL}
+      - ADMIN_PORTAL_URL=${ADMIN_PORTAL_INTERNAL_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+    networks:
+      - sso-network
+    extra_hosts:
+      - "localhost:host-gateway"
 
 networks:
   sso-network:

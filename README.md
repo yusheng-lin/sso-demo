@@ -309,6 +309,37 @@ FLUSHALL
 2) "cs-portal:sess:def456uvw"
 ```
 
+**Example Session Value (Simplified):**
+```bash
+127.0.0.1:6379> GET "admin-portal:sess:abc123xyz"
+```
+```json
+{
+  "cookie": {
+    "originalMaxAge": 86400000,
+    "expires": "2026-01-31T16:20:58.678Z",
+    "secure": false,
+    "httpOnly": true,
+    "path": "/",
+    "sameSite": "lax"
+  },
+  "auth_redirect_uri": "http://localhost:3001/dashboard?auth_callback=1",
+  "keycloak-token": {
+    "access_token": "eyJhbGciOiJSUzI1NiIs...<truncated>",
+    "expires_in": 300,
+    "refresh_expires_in": 1800,
+    "refresh_token": "eyJhbGciOiJIUzUxMiIs...<truncated>",
+    "token_type": "Bearer",
+    "id_token": "eyJhbGciOiJSUzI1NiIs...<truncated>",
+    "not-before-policy": 0,
+    "session_state": "e785dd7d-3ef6-d73c-a887-07301077bc0d",
+    "scope": "openid profile email"
+  }
+}
+```
+
+> **Note:** The actual `keycloak-token` is stored as an escaped JSON string. The tokens (access_token, refresh_token, id_token) are JWT tokens containing user claims like `preferred_username`, `realm_access.roles`, `email`, etc.
+
 ## Stopping the Demo
 
 ```bash
